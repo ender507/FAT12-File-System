@@ -57,23 +57,28 @@ int main(){
 		string cmdParts[3];
 		cmdDecode(cmdParts,cmd);
 		if(cmdParts[0]=="")continue;
+		//原有指令 
 		else if(cmdParts[0]=="DIR")dir(cmdParts,pos); 
 		else if(cmdParts[0]=="CD")cd(cmdParts,pos,true);
+		else if(cmdParts[0]=="RD")rd(cmdParts,pos);
+		else if(cmdParts[0]=="MD")md(cmdParts,pos);
+		else if(cmdParts[0]=="TYPE")type(cmdParts,pos);
+		else if(cmdParts[0]=="DEL")del(cmdParts,pos);
+		else if(cmdParts[0]=="CLS")system("cls");
+		//原创指令 
 		else if(cmdParts[0]=="TREE"){
 			tree();
 			cout<<endl;
 		}
-		else if(cmdParts[0]=="RD")rd(cmdParts,pos);
-		else if(cmdParts[0]=="TYPE")type(cmdParts,pos);
-		else if(cmdParts[0]=="CLS")system("cls");
-		else if(cmdParts[0]=="MD")md(cmdParts,pos);
 		else if(cmdParts[0]=="EXIT")return 0;
 		//debug用的指令 
 		else if(cmdParts[0]=="POS")printf("0x%x\n",pos);			//显示当前地址 
 		else if(cmdParts[0]=="FREE"){
 			for(int i=0;i<freeCluster.size();i++)cout<<freeCluster[i]<<' ';//显示空闲文件首簇 
-			cout<<endl;
+			cout<<endl<<"size: "<<freeCluster.size()<<endl;
 		}
+		else if(cmdParts[0]=="P2C")p2c();		//输入pos返回对应的cluster的值 
+		else if(cmdParts[0]=="FULL")full(cmdParts,pos);//在当前目录创建14个子目录
 		else cout<<"Bad command or file name\n";
 	}
 	FATfile.close();

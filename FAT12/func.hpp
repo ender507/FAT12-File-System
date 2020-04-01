@@ -225,7 +225,7 @@ void dirCluster(unsigned int pos,int &count,long long int &totalSize){
 			else cout<<FAT[j+i];
 			if(i==7)cout<<'\t';
 		}
-		if(FAT[11]=0x10)cout<<"<DIR>\t\t";
+		if(FAT[j+11]==0x10)cout<<"<DIR>\t\t";
 		else {
 			//若文件不是目录则打印大小 
 			unsigned int fileSize = getFileSize(j);
@@ -270,7 +270,7 @@ bool dirempty(unsigned int pos){
 }
 
 //在当前文件夹下寻找空闲位置并返回首地址,找不到返回0 
-unsigned int findFreeEntry(unsigned int pos){
+unsigned int findFreeEntry(unsigned int &pos){
 	if(pos < 0x4200){
 		while(pos != 0x4200){
 			if(FAT[pos]==(char)0xe5 || FAT[pos]==0)return pos;
@@ -337,14 +337,14 @@ void makeEntry(string name,unsigned int pos,int cluster,char type,unsigned int s
 	if(type==0x10)for(int i=28; i<32; i++) FAT[pos+i]=' ';
 }
 
-void makedir(string name,unsigned int pos,int cluster){
+void makedir(string name,unsigned firPos,unsigned int pos,int cluster){
 	makeEntry(name,pos,cluster,0x10);
 	//写入目录.和.. 
 	unsigned int originPos = pos;
 	pos = (cluster+31) * 0x200;
 	makeEntry(".",pos,cluster,0x10);
 	if(originPos<0x4200)makeEntry("..",pos+0x20,0,0x10);
-	else makeEntry("..",pos+0x20,originPos/0x200-31,0x10);
+	else makeEntry("..",pos+0x20,firPos/0x200-31,0x10);
 	//清空目录对应扇区的全部数据
 	for(unsigned int i=pos+0x40; i<pos+0x200; i+=1)FAT[i]=0;
 }
@@ -357,17 +357,42 @@ unsigned int findFreePos(){
 	return 0;
 } 
 
-//将簇号在FAT表中的对应位置改为0xfff 
-void endCluster(int cluster){
+//将簇号在FAT表中的对应位置改为val
+void assignCluster(int cluster,unsigned int val){
+	cluster*=3;
 	if(cluster%2){
 		cluster /= 2;
-		FAT[0x200+cluster] |= 0xf0;
-		FAT[0x200+cluster+1] = 0xff;
+		FAT[0x200+cluster] = (FAT[0x200+cluster]&0xf) + ((val<<4)&0xf0);
+		FAT[0x200+cluster+1] = (val>>4)&0xff;
 	}
 	else{
 		cluster /= 2;
-		FAT[0x200+cluster] = 0xff;
-		FAT[0x200+cluster+1] |= 0xf;
+		FAT[0x200+cluster] = val&0xff;
+		FAT[0x200+cluster+1] = (FAT[0x200+cluster+1]&0xf0) + ((val>>8)&0xf);
+	}
+}
+
+//递归删除一个目录及内部所有文件
+void deleteAll(unsigned int pos){
+	if(FAT[pos+0xb]!=0x10){
+		FAT[pos] = 0xe5;
+		freeCluster.push_back(FAT[pos+0x1a]&0xff + (FAT[pos+0x1b]&0xff)*0x100);
+	}
+	else{
+		unsigned int tmp = entry2pos(pos);
+		for(int i=tmp; i<tmp+0x200; i+=0x20){
+			if(FAT[i]==0)break;
+			if(FAT[i]=='.'&&FAT[i+1]==0x20)continue;
+			if(FAT[i]=='.'&&FAT[i+1]=='.'&&FAT[i+2]==0x20)continue;
+			deleteAll(i);
+			if(i+0x20==tmp+0x200){
+				tmp = (getNextCluster(tmp)+31)*0x200;
+				if(tmp==0xfff)break;
+				i = tmp-0x20;
+			}
+		}
+		FAT[pos] = 0xe5;
+		freeCluster.push_back(FAT[pos+0x1a]&0xff + (FAT[pos+0x1b]&0xff)*0x100);
 	}
 }
 #endif

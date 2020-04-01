@@ -185,7 +185,8 @@ void md(string *cmdParts,unsigned int pos){
 		cout<<"Unable to creat directory\n";
 		return;
 	}
-	pos = findFreeEntry(pos);
+	unsigned int lastPos = pos, firPos = pos;
+	pos = findFreeEntry(lastPos);
 	//根目录entry达到最大值，不能创建 
 	if(pos == 1){
 		cout<<"No space left in root directory\n";
@@ -194,10 +195,32 @@ void md(string *cmdParts,unsigned int pos){
 	//当前目录正好被占满 
 	if(pos == 0){
 		if(freeCluster.size()){
-			
-			
-			
-			
+			vector<int>::iterator iter = freeCluster.begin();
+			assignCluster(lastPos/0x200-31,*iter);
+			unsigned freePos = (*iter+31)*0x200;
+			for(unsigned int i=freePos; i<freePos+0x200; i+=1)FAT[i]=0;
+			unsigned int tmp = getNextCluster(((*iter)+31)*0x200);
+			if(tmp == 0xfff)freeCluster.erase(iter);//队列头的簇不存在下一个簇，则出队
+			//若存在，将该簇的下一个簇号改为0xfff，队列中该位置替换为原来的下簇的簇号 
+			else{
+				assignCluster((*iter),0xfff);
+				(*iter) = tmp;
+			}
+			if(freeCluster.size()){
+				iter = freeCluster.begin();
+				makedir(name,firPos,freePos,*iter);
+				tmp = getNextCluster(((*iter)+31)*0x200);
+				if(tmp == 0xfff)freeCluster.erase(iter); 
+				else{
+					assignCluster((*iter),0xfff);
+					(*iter) = tmp;
+				}
+			}
+			else{
+				unsigned int freePos2 = findFreePos();
+				makedir(name,firPos,freePos,freePos2/0x200-31);
+				assignCluster(freePos2/0x200-31,0xfff);
+			}
 		}
 		else{
 			unsigned int freePos = findFreePos();
@@ -206,11 +229,16 @@ void md(string *cmdParts,unsigned int pos){
 				return;
 			}
 			int cluster = freePos/0x200-31;
-			endCluster(cluster);
-			//当前目录的簇号要改成cluster 
-			
-			
-			
+			assignCluster(cluster,0xfff);
+			assignCluster((lastPos/0x200)-31,cluster);
+			for(unsigned int i=freePos; i<freePos+0x200; i+=1)FAT[i]=0;
+			unsigned int freePos2 = findFreePos();
+			if(freePos2==0){
+				cout<<"No space left\n";
+				return;
+			}
+			assignCluster(freePos2/0x200-31,0xfff);
+			makedir(name,firPos,freePos,freePos2/0x200-31);
 		}
 	}
 	else{
@@ -219,13 +247,12 @@ void md(string *cmdParts,unsigned int pos){
 			vector<int>::iterator iter = find(freeCluster.begin(),freeCluster.end(),cluster);
 			//当前entry的首簇不在空闲文件簇的队列中,则用队列头的簇作为新文件夹的首簇 
 			if(iter==freeCluster.end())iter = freeCluster.begin();
-			makedir(name,pos,*iter);
+			makedir(name,firPos,pos,*iter);
 			unsigned int tmp = getNextCluster(((*iter)+31)*0x200);
 			if(tmp == 0xfff)freeCluster.erase(iter);//队列头的簇不存在下一个簇，则出队
 			//若存在，将该簇的下一个簇号改为0xfff，队列中该位置替换为原来的下簇的簇号 
 			else{
-				int cluster = (*iter)*3;
-				endCluster(cluster);
+				assignCluster((*iter),0xfff);
 				(*iter) = tmp;
 			}
 		}
@@ -236,12 +263,52 @@ void md(string *cmdParts,unsigned int pos){
 				return;
 			}
 			int cluster = freePos/0x200-31;
-			endCluster(cluster);
-			makedir(name,pos,cluster);
+			assignCluster(cluster,0xfff);
+			makedir(name,firPos,pos,cluster);
 		}
 	}
 }
 
+void p2c(){
+	int pos;
+	scanf("%x",&pos);
+	printf("%x\n",getNextCluster(pos));
+}
 
+void full(string *cmdParts,unsigned int pos){
+	for(int i=0;i!=14;i++){
+		cmdParts[1]="";
+		cmdParts[1] += ('A'+i);
+		md(cmdParts,pos);
+	}
+}
+
+void del(string *cmdParts,unsigned int pos){
+	string filename = path_file(cmdParts);
+	if(filename=="")return;
+	cd(cmdParts,pos,false);
+	unsigned originPos = pos;
+	pos = findFile(pos,false,filename);
+	if(pos == 0){
+		cout<<"File not found\n";
+		return;
+	}
+	//如果是个目录 
+	if(pos == 1){
+		pos = findFile(originPos,true,filename);
+		string tmp="";
+		while(tmp==""||(tmp[0]!='y'&&tmp[0]!='Y'&&tmp[0]!='n'&&tmp[0]!='N')){
+			cout<<"All files in directory will be deleted!\n";
+			cout<<"Are you sure(Y/N)?";
+			getline(cin,tmp);
+		}
+		if(tmp[0]=='N'||tmp[0]=='n')return;
+		deleteAll(pos);
+		return;
+	}
+	//如果是个文件 
+	FAT[pos] = 0xe5;
+	freeCluster.push_back(FAT[pos+0x1a]&0xff + (FAT[pos+0x1b]&0xff)*0x100);
+}
 
 #endif
