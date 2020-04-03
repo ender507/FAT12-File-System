@@ -2,6 +2,7 @@
 #define FUNC_HPP
 #include<string>
 #include<algorithm>
+#include<assert.h>
 #include<iostream>
 #include<vector>
 #include<string>
@@ -164,24 +165,24 @@ bool pathStep(string step,unsigned int &pos,bool changePATH){
 }
 
 //解析长串路径 
-bool getPath(string*cmdParts,unsigned int &pos,bool changePATH){
+bool getPath(string cmdParts,unsigned int &pos,bool changePATH){
 	unsigned int originPos = pos;
 	string originPATH = PATH;
-	int len = cmdParts[1].length();
+	int len = cmdParts.length();
 	//绝对路径的处理 (路径以A:/开头) 
-	if(len>2&&cmdParts[1][0]=='A'&&cmdParts[1][1]==':'&&cmdParts[1][2]=='\\'){
+	if(len>2&&cmdParts[0]=='A'&&cmdParts[1]==':'&&cmdParts[2]=='\\'){
 		pos=0x2600;
-		cmdParts[1].erase(cmdParts[1].begin());
-		cmdParts[1].erase(cmdParts[1].begin());
-		cmdParts[1].erase(cmdParts[1].begin());
+		cmdParts.erase(cmdParts.begin());
+		cmdParts.erase(cmdParts.begin());
+		cmdParts.erase(cmdParts.begin());
 		len-=3;
 		if(changePATH)PATH="\\";
-		if(cmdParts[1]=="")return true;
+		if(cmdParts=="")return true;
 	}
 	int i=0;
 	string step;
 	while(i!=len+1){
-		if(cmdParts[1][i]!='\\' && i!=len)step += cmdParts[1][i];
+		if(cmdParts[i]!='\\' && i!=len)step += cmdParts[i];
 		else{
 			if(!pathStep(step,pos,changePATH)){
 				pos = originPos;
@@ -196,19 +197,19 @@ bool getPath(string*cmdParts,unsigned int &pos,bool changePATH){
 }
 
 //cmdParts[1]拆分成路径+文件名
-string path_file(string* cmdParts){
-	if(cmdParts[1]==""){
+string path_file(string&cmdParts){
+	if(cmdParts==""){
 		cout<<"Required parameter missing\n";
 		return "";
 	}
 	string filename;
-	while(cmdParts[1].length()){
-		if(*(cmdParts[1].end()-1)=='\\'){
-			cmdParts[1].erase(cmdParts[1].end()-1);
+	while(cmdParts.length()){
+		if(*(cmdParts.end()-1)=='\\'){
+			cmdParts.erase(cmdParts.end()-1);
 			break;
 		}
-		filename += (*(cmdParts[1].end()-1));
-		cmdParts[1].erase(cmdParts[1].end()-1);
+		filename += (*(cmdParts.end()-1));
+		cmdParts.erase(cmdParts.end()-1);
 	}
 	reverse(filename.begin(),filename.end());
 	return filename;
@@ -349,6 +350,9 @@ void makedir(string name,unsigned firPos,unsigned int pos,int cluster){
 	for(unsigned int i=pos+0x40; i<pos+0x200; i+=1)FAT[i]=0;
 }
 
+void maketxt(string name,unsigned int pos,int cluster){
+	makeEntry(name,pos,cluster,0x20);
+}
 //没有空闲文件产生的空闲簇时，在FAT表中搜寻第一个空闲簇，返回其对应地址。无空闲簇返回0 
 unsigned int findFreePos(){
 	for(unsigned int pos = 0x4200; pos<0x168000; pos+=0x200){
@@ -395,4 +399,220 @@ void deleteAll(unsigned int pos){
 		freeCluster.push_back(FAT[pos+0x1a]&0xff + (FAT[pos+0x1b]&0xff)*0x100);
 	}
 }
+
+//检查文件或目录名是否合法 (只能有字母或数字，允许有一个点分割文件名和后缀名)
+bool nameCheck(string name){
+	if(count(name.begin(),name.end(),'.')>1||name[0]=='.')return false;
+	int len = name.length();
+	for(int i=0; i<len; i++){
+		if(name[i]=='.')continue;
+		if((name[i]>='a'&&name[i]<='z')||(name[i]>='A'&&name[i]<='Z')||((name[i]>='0'&&name[i]<='9')))continue;
+		return false;
+	}
+	return true;
+}
+
+void mk(unsigned pos,string name,bool isDir){
+	//lastPos:当前目录最后一个扇区的首地址，firPos:当前目录第一个扇区的首地址 
+	unsigned int lastPos = pos, firPos = pos;
+	pos = findFreeEntry(lastPos);
+	//根目录entry达到最大值，不能创建 
+	if(pos == 1){
+		cout<<"No space left in root directory\n";
+		return;
+	}
+	//当前目录正好被占满 
+	if(pos == 0){
+		if(freeCluster.size()){ 
+			vector<int>::iterator iter = freeCluster.begin();
+			assignCluster(lastPos/0x200-31,*iter);
+			unsigned freePos = (*iter+31)*0x200;
+			for(unsigned int i=freePos; i<freePos+0x200; i+=1)FAT[i]=0;
+			unsigned int tmp = getNextCluster(((*iter)+31)*0x200);
+			if(tmp == 0xfff)freeCluster.erase(iter);//队列头的簇不存在下一个簇，则出队
+			//若存在，将该簇的下一个簇号改为0xfff，队列中该位置替换为原来的下簇的簇号 
+			else{
+				assignCluster((*iter),0xfff);
+				(*iter) = tmp;
+			}
+			if(freeCluster.size()){
+				iter = freeCluster.begin();
+				if(isDir)makedir(name,firPos,freePos,*iter);
+				else maketxt(name,freePos,*iter);
+				tmp = getNextCluster(((*iter)+31)*0x200);
+				if(tmp == 0xfff)freeCluster.erase(iter); 
+				else{
+					assignCluster((*iter),0xfff);
+					(*iter) = tmp;
+				}
+			}
+			else{
+				unsigned int freePos2 = findFreePos();
+				if(isDir)makedir(name,firPos,freePos,*iter);
+				else maketxt(name,freePos,*iter);
+				assignCluster(freePos2/0x200-31,0xfff);
+			}
+		}
+		else{
+			unsigned int freePos = findFreePos();
+			if(freePos==0){
+				cout<<"No space left\n";
+				return;
+			}
+			int cluster = freePos/0x200-31;
+			assignCluster(cluster,0xfff);
+			assignCluster((lastPos/0x200)-31,cluster);
+			for(unsigned int i=freePos; i<freePos+0x200; i+=1)FAT[i]=0;
+			unsigned int freePos2 = findFreePos();
+			if(freePos2==0){
+				cout<<"No space left\n";
+				return;
+			}
+			assignCluster(freePos2/0x200-31,0xfff);
+			if(isDir)makedir(name,firPos,freePos,freePos2/0x200-31);
+			else maketxt(name,freePos,freePos2/0x200-31);
+		}
+	}
+	else{
+		unsigned int cluster = FAT[pos+0x1a]&0xff + (FAT[pos+0x1b]&0xff)*0x100;
+		if(freeCluster.size()){
+			vector<int>::iterator iter = find(freeCluster.begin(),freeCluster.end(),cluster);
+			//当前entry的首簇不在空闲文件簇的队列中,则用队列头的簇作为新文件夹的首簇 
+			if(iter==freeCluster.end())iter = freeCluster.begin();
+			if(isDir)makedir(name,firPos,pos,*iter);
+			else maketxt(name,pos,*iter);
+			unsigned int tmp = getNextCluster(((*iter)+31)*0x200);
+			if(tmp == 0xfff)freeCluster.erase(iter);//队列头的簇不存在下一个簇，则出队
+			//若存在，将该簇的下一个簇号改为0xfff，队列中该位置替换为原来的下簇的簇号 
+			else{
+				assignCluster((*iter),0xfff);
+				(*iter) = tmp;
+			}
+		}
+		else{
+			unsigned int freePos = findFreePos();
+			if(freePos==0){
+				cout<<"No space left\n";
+				return;
+			}
+			int cluster = freePos/0x200-31;
+			assignCluster(cluster,0xfff);
+			if(isDir)makedir(name,firPos,pos,cluster);
+			else maketxt(name,pos,cluster);
+		}
+	}
+	return;
+}
+
+void copytxt(unsigned int pos1, unsigned int pos2,unsigned int size1, unsigned &size2){
+	unsigned int p1=pos1,p2=pos2;
+	while(size1--){
+		FAT[p2++]=FAT[p1++];
+		size2++;
+		if(size1==0)return;
+		if(p1==pos1+0x200){
+			pos1=(getNextCluster(pos1)+31)*0x200;
+			p1=pos1;
+			if(freeCluster.size()){
+				vector<int>::iterator iter = freeCluster.begin();
+				assignCluster(pos2/0x200-31,*iter);
+				pos2 = ((*iter)+31)*0x200;
+				p2=pos2;
+				if(getNextCluster(pos2)==0xfff)freeCluster.erase(iter);
+				else{
+					(*iter) = getNextCluster(pos2);
+					assignCluster(pos2/0x200-31,0xfff);
+				}
+			}
+			else{
+				unsigned freePos = findFreePos();
+				if(freePos==0){
+					cout<<"No enough space left!\n";
+					return;
+				}
+				else{
+					assignCluster(pos2/0x200-31,freePos/0x200-31);
+					assignCluster(freePos/0x200-31,0xfff);
+					pos2 = freePos;
+					p2 = pos2;
+				}
+			}
+		}
+	}
+}
+
+void appendtxt(unsigned inPos1,unsigned inPos2,unsigned outPos,unsigned inSize1,unsigned inSize2,unsigned&outSize){
+	unsigned int p1=inPos1,p2=outPos;
+	//将第一个文件写入 
+	while(inSize1--){
+		FAT[p2++]=FAT[p1++];
+		outSize++;
+		if(inSize1==0)break;
+		if(p1==inPos1+0x200){
+			inPos1=(getNextCluster(inPos1)+31)*0x200;
+			p1=inPos1;
+			if(freeCluster.size()){
+				vector<int>::iterator iter = freeCluster.begin();
+				assignCluster(outPos/0x200-31,*iter);
+				outPos = ((*iter)+31)*0x200;
+				p2=outPos;
+				if(getNextCluster(outPos)==0xfff)freeCluster.erase(iter);
+				else{
+					(*iter) = getNextCluster(outPos);
+					assignCluster(outPos/0x200-31,0xfff);
+				}
+			}
+			else{
+				unsigned freePos = findFreePos();
+				if(freePos==0){
+					cout<<"No enough space left!\n";
+					return;
+				}
+				else{
+					assignCluster(outPos/0x200-31,freePos/0x200-31);
+					assignCluster(freePos/0x200-31,0xfff);
+					outPos = freePos;
+					p2 = outPos;
+				}
+			}
+		}
+	}
+	p1 = inPos2;
+	//将第二个文件写入
+	while(inSize2--){
+		if(p1==inPos2+0x200){
+			inPos2=(getNextCluster(inPos2)+31)*0x200;
+			p1=inPos2;
+		}
+		if(p2==outPos+0x200){
+			if(freeCluster.size()){
+				vector<int>::iterator iter = freeCluster.begin();
+				assignCluster(outPos/0x200-31,*iter);
+				outPos = ((*iter)+31)*0x200;
+				p2=outPos;
+				if(getNextCluster(outPos)==0xfff)freeCluster.erase(iter);
+				else{
+					(*iter) = getNextCluster(outPos);
+					assignCluster(outPos/0x200-31,0xfff);
+				}
+			}
+			else{
+				unsigned freePos = findFreePos();
+				if(freePos==0){
+					cout<<"No enough space left!\n";
+					return;
+				}
+				else{
+					assignCluster(outPos/0x200-31,freePos/0x200-31);
+					assignCluster(freePos/0x200-31,0xfff);
+					outPos = freePos;
+					p2 = outPos;
+				}
+			}
+		}
+		FAT[p2++]=FAT[p1++];
+		outSize++;
+	} 
+}
+
 #endif

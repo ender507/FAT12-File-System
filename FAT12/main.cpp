@@ -13,7 +13,7 @@ void cmdDecode(string* cmdParts,string cmd){
 	}
 }
 
-//对freeCluster初始化 
+//对freeCluster初始化 (空闲文件首簇的记录)
 void initFreeCluster(unsigned int pos=0x2600){
 	for(unsigned int i=pos; i<pos+0x200; i+=32){
 		if(FAT[i]=='.'&&FAT[i+1]==0x20)continue;
@@ -38,10 +38,25 @@ void initFreeCluster(unsigned int pos=0x2600){
 
 //整个FAT启动时的初始化 
 void FATinit(fstream &FATfile){
-	FATfile.open("test.img",ios::in|ios::out|ios::binary);
+	cout<<"系统初始化...\n\n";
+	FATfile.open("dossys.img",ios::in|ios::binary);
+	if(FATfile==NULL){
+		cout<<"没有找到镜像文件！\n请在本程序当前文件夹下放入名为dossys.img的文件！\n";
+		exit(0);
+	}
 	for(int i=0; i<SIZE; i++)FATfile.read((char*)&FAT[i],sizeof(char));
 	PATH = "\\";
 	initFreeCluster();
+	cout<<"首扇区信息：\n";
+	cout<<"厂商名:";for(int i=3; i<11; i++)cout<<FAT[i];
+	cout<<"\n每个扇区字节数:";cout<<((((unsigned) FAT[12]&0xff)<<8)+((unsigned) FAT[11]&0xff));
+	cout<<"\n每簇扇区数:";cout<<(unsigned)FAT[13];
+	cout<<"\nFAT表数:";cout<<(unsigned)FAT[16];
+	cout<<"\n根目录最大文件数:";cout<<((((unsigned)FAT[18]&0xff)<<8)+((unsigned)FAT[17]&0xff));
+	cout<<"\n扇区总数:";cout<<((((unsigned) FAT[20]&0xff)<<8)+((unsigned) FAT[19]&0xff));
+	cout<<"\n每个FAT表占有的扇区数:";cout<<((((unsigned) FAT[23]&0xff)<<8)+((unsigned) FAT[22]&0xff));
+	cout<<"\n文件系统类型:";for(int i=54; i<62; i++)cout<<FAT[i];
+	cout<<"\n\n初始化成功！\n支持的指令的详细使用方式请参阅打包文件中的README.txt或README.md\n输入help查看支持指令的简单介绍\n\n";
 }
 
 int main(){
@@ -49,6 +64,7 @@ int main(){
 	string cmd;
 	unsigned int pos=0x2600;
 	FATinit(FATfile);
+	FATfile.close();
 	while(1){
 		cout<<"A:"<<PATH<<'>';
 		getline(cin,cmd);
@@ -59,17 +75,20 @@ int main(){
 		if(cmdParts[0]=="")continue;
 		//原有指令 
 		else if(cmdParts[0]=="DIR")dir(cmdParts,pos); 
-		else if(cmdParts[0]=="CD")cd(cmdParts,pos,true);
+		else if(cmdParts[0]=="CD")cd(cmdParts[1],pos,true);
 		else if(cmdParts[0]=="RD")rd(cmdParts,pos);
 		else if(cmdParts[0]=="MD")md(cmdParts,pos);
 		else if(cmdParts[0]=="TYPE")type(cmdParts,pos);
 		else if(cmdParts[0]=="DEL")del(cmdParts,pos);
 		else if(cmdParts[0]=="CLS")system("cls");
+		else if(cmdParts[0]=="COPY")copy(cmdParts,pos);
 		//原创指令 
+		else if(cmdParts[0]=="HELP")help();
 		else if(cmdParts[0]=="TREE"){
 			tree();
 			cout<<endl;
 		}
+		else if(cmdParts[0]=="SAVE")save(FATfile);
 		else if(cmdParts[0]=="EXIT")return 0;
 		//debug用的指令 
 		else if(cmdParts[0]=="POS")printf("0x%x\n",pos);			//显示当前地址 
@@ -81,7 +100,6 @@ int main(){
 		else if(cmdParts[0]=="FULL")full(cmdParts,pos);//在当前目录创建14个子目录
 		else cout<<"Bad command or file name\n";
 	}
-	FATfile.close();
 }
 //dir 10
 //hiden 27

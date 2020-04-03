@@ -114,7 +114,7 @@ void tree(unsigned int pos=0x2600,int level=1){
 }
 
 void dir(string* cmdParts,unsigned int pos){
-	if(cmdParts[1]!=""&&!getPath(cmdParts,pos,false)){
+	if(cmdParts[1]!=""&&!getPath(cmdParts[1],pos,false)){
 		cout<<"File not found\n";
 		return;
 	}
@@ -136,15 +136,15 @@ void dir(string* cmdParts,unsigned int pos){
 	cout<<strNum(totalSize)<<" bytes\n\n";
 }
 
-void cd(string* cmdParts,unsigned int &pos,bool changePath){
-	if(cmdParts[1]=="")return;
+void cd(string cmdParts,unsigned int &pos,bool changePath){
+	if(cmdParts=="")return;
 	if(!getPath(cmdParts,pos,changePath))cout<<"Invalid directory\n";
 }
 
 void type(string* cmdParts,unsigned int pos){
-	string filename = path_file(cmdParts);
+	string filename = path_file(cmdParts[1]);
 	if(filename=="")return;
-	cd(cmdParts,pos,false);
+	cd(cmdParts[1],pos,false);
 	unsigned int filePos = findFile(pos,false,filename);
 	if(filePos == 0)cout<<"File not found\t-"<<cmdParts[1]<<'\\'<<filename<<endl;
 	else if(filePos == 1)cout<<"Access denied\t-"<<filename<<endl;
@@ -157,9 +157,9 @@ void type(string* cmdParts,unsigned int pos){
 
 void rd(string* cmdParts,unsigned int pos){
 	unsigned int originPos = pos;
-	string filename = path_file(cmdParts);
+	string filename = path_file(cmdParts[1]);
 	if(filename=="")return;
-	cd(cmdParts,pos,false);
+	cd(cmdParts[1],pos,false);
 	pos = findFile(pos,true,filename);
 	if(pos==0||pos==1){
 		cout<<"Invalid path, not directory,\nor directory not empty\n\n";
@@ -178,95 +178,18 @@ void rd(string* cmdParts,unsigned int pos){
 }
 
 void md(string *cmdParts,unsigned int pos){
-	string name = path_file(cmdParts);
+	string name = path_file(cmdParts[1]);
 	if(name=="")return;
-	cd(cmdParts,pos,false);
-	if(count(name.begin(),name.end(),'.')>1 || findFile(pos,true,name)!=0){
-		cout<<"Unable to creat directory\n";
+	if(nameCheck(name)==false){
+		cout<<"Directory name invalid!\n";
+		return;
+	} 
+	cd(cmdParts[1],pos,false);
+	if(findFile(pos,true,name)!=0){
+		cout<<"Same named file exist!\n";
 		return;
 	}
-	unsigned int lastPos = pos, firPos = pos;
-	pos = findFreeEntry(lastPos);
-	//根目录entry达到最大值，不能创建 
-	if(pos == 1){
-		cout<<"No space left in root directory\n";
-		return;
-	}
-	//当前目录正好被占满 
-	if(pos == 0){
-		if(freeCluster.size()){
-			vector<int>::iterator iter = freeCluster.begin();
-			assignCluster(lastPos/0x200-31,*iter);
-			unsigned freePos = (*iter+31)*0x200;
-			for(unsigned int i=freePos; i<freePos+0x200; i+=1)FAT[i]=0;
-			unsigned int tmp = getNextCluster(((*iter)+31)*0x200);
-			if(tmp == 0xfff)freeCluster.erase(iter);//队列头的簇不存在下一个簇，则出队
-			//若存在，将该簇的下一个簇号改为0xfff，队列中该位置替换为原来的下簇的簇号 
-			else{
-				assignCluster((*iter),0xfff);
-				(*iter) = tmp;
-			}
-			if(freeCluster.size()){
-				iter = freeCluster.begin();
-				makedir(name,firPos,freePos,*iter);
-				tmp = getNextCluster(((*iter)+31)*0x200);
-				if(tmp == 0xfff)freeCluster.erase(iter); 
-				else{
-					assignCluster((*iter),0xfff);
-					(*iter) = tmp;
-				}
-			}
-			else{
-				unsigned int freePos2 = findFreePos();
-				makedir(name,firPos,freePos,freePos2/0x200-31);
-				assignCluster(freePos2/0x200-31,0xfff);
-			}
-		}
-		else{
-			unsigned int freePos = findFreePos();
-			if(freePos==0){
-				cout<<"No space left\n";
-				return;
-			}
-			int cluster = freePos/0x200-31;
-			assignCluster(cluster,0xfff);
-			assignCluster((lastPos/0x200)-31,cluster);
-			for(unsigned int i=freePos; i<freePos+0x200; i+=1)FAT[i]=0;
-			unsigned int freePos2 = findFreePos();
-			if(freePos2==0){
-				cout<<"No space left\n";
-				return;
-			}
-			assignCluster(freePos2/0x200-31,0xfff);
-			makedir(name,firPos,freePos,freePos2/0x200-31);
-		}
-	}
-	else{
-		unsigned int cluster = FAT[pos+0x1a]&0xff + (FAT[pos+0x1b]&0xff)*0x100;
-		if(freeCluster.size()){
-			vector<int>::iterator iter = find(freeCluster.begin(),freeCluster.end(),cluster);
-			//当前entry的首簇不在空闲文件簇的队列中,则用队列头的簇作为新文件夹的首簇 
-			if(iter==freeCluster.end())iter = freeCluster.begin();
-			makedir(name,firPos,pos,*iter);
-			unsigned int tmp = getNextCluster(((*iter)+31)*0x200);
-			if(tmp == 0xfff)freeCluster.erase(iter);//队列头的簇不存在下一个簇，则出队
-			//若存在，将该簇的下一个簇号改为0xfff，队列中该位置替换为原来的下簇的簇号 
-			else{
-				assignCluster((*iter),0xfff);
-				(*iter) = tmp;
-			}
-		}
-		else{
-			unsigned int freePos = findFreePos();
-			if(freePos==0){
-				cout<<"No space left\n";
-				return;
-			}
-			int cluster = freePos/0x200-31;
-			assignCluster(cluster,0xfff);
-			makedir(name,firPos,pos,cluster);
-		}
-	}
+	mk(pos,name,true);
 }
 
 void p2c(){
@@ -284,9 +207,9 @@ void full(string *cmdParts,unsigned int pos){
 }
 
 void del(string *cmdParts,unsigned int pos){
-	string filename = path_file(cmdParts);
+	string filename = path_file(cmdParts[1]);
 	if(filename=="")return;
-	cd(cmdParts,pos,false);
+	cd(cmdParts[1],pos,false);
 	unsigned originPos = pos;
 	pos = findFile(pos,false,filename);
 	if(pos == 0){
@@ -309,6 +232,114 @@ void del(string *cmdParts,unsigned int pos){
 	//如果是个文件 
 	FAT[pos] = 0xe5;
 	freeCluster.push_back(FAT[pos+0x1a]&0xff + (FAT[pos+0x1b]&0xff)*0x100);
+}
+
+void save(fstream &FATfile){
+	fstream t;
+	t.open("dossys.img",ios::out|ios::binary);
+	for(int i=0; i<SIZE; i++)t.write((char*)&FAT[i],sizeof(char));
+}
+
+//为了重用cd函数，把bind放在cmd.hpp里了 
+void bind(string* cmdParts,unsigned int pos){
+	string::iterator i;
+	string inName1,inName2,outName;
+	for(i=cmdParts[1].begin();(*i)!='+';i++);
+	string inPath1(cmdParts[1].begin(),i);
+	string inPath2(i+1,cmdParts[1].end());
+	string outPath=cmdParts[2];
+	inName1 = path_file(inPath1);
+	inName2 = path_file(inPath2);
+	outName = path_file(outPath);
+	if(inName1==""||inName2==""||outName=="")return;
+	if(!nameCheck(outName)){
+		cout<<"Invalid file name!\t-"+outName<<endl;
+		return;
+	}
+	unsigned int inPos1=pos, inPos2=pos, outPos=pos;
+	cd(inPath1,inPos1,false);
+	cd(inPath2,inPos2,false);
+	cd(outPath,outPos,false);
+	if(findFile(outPos,false,outName)!=0){
+		cout<<outName+" has already exist!\n";
+		return;
+	}
+	inPos1 = findFile(inPos1,false,inName1);
+	inPos2 = findFile(inPos2,false,inName2);
+	if(inPos1==1||inPos1==0){
+		cout<<inName1+" not exists or not a text file!\n";
+		return;
+	}
+	if(inPos2==1||inPos2==0){
+		cout<<inName2+" not exists or not a text file!\n";
+		return;
+	}
+	mk(outPos,outName,false);
+	outPos = findFile(outPos,false,outName);
+	assert(outPos!=1&&outPos!=0);
+	unsigned int txtInPos1 = entry2pos(inPos1);
+	unsigned int txtInPos2 = entry2pos(inPos2);
+	unsigned int txtOutPos = entry2pos(outPos);
+	unsigned int inSize1=getFileSize(inPos1);
+	unsigned int inSize2=getFileSize(inPos2);
+	unsigned int outSize=0;
+	appendtxt(txtInPos1,txtInPos2,txtOutPos,inSize1,inSize2,outSize);
+	FAT[outPos+0x1c] = outSize&0xff;
+	FAT[outPos+0x1d] = ((outSize>>8)&0xff);
+	FAT[outPos+0x1e] = ((outSize>>16)&0xff);
+	FAT[outPos+0x1f] = ((outSize>>24)&0xff);
+}
+
+void copy(string* cmdParts,unsigned int pos){
+	//cmdParts[1]里有加号，说明是合并操作 
+	if(find(cmdParts[1].begin(),cmdParts[1].end(),'+')!=cmdParts[1].end()){
+		bind(cmdParts,pos);
+		return;
+	}
+	unsigned pos1=pos, pos2=pos;
+	string filename1 = path_file(cmdParts[1]);
+	string filename2 = path_file(cmdParts[2]);
+	if(!nameCheck(filename2))cout<<"Invalid file name!\t-"+filename2<<endl<<endl;
+	cd(cmdParts[1],pos1,false);
+	cd(cmdParts[2],pos2,false);
+	if(filename1==""||filename2=="")return;
+	if(findFile(pos2,false,filename2)!=0){
+		cout<<filename2+" has already exist!\n";
+		return;
+	}
+	pos1 = findFile(pos1,false,filename1);
+	if(pos1==1||pos1==0){
+		cout<<filename1+" not exists or not a text file!\n";
+		return;
+	}
+	mk(pos2,filename2,false);	//先创建输出的文件 
+	pos2 = findFile(pos2,false,filename2);
+	assert(pos2!=1&&pos2!=0);
+	unsigned int txtPos1 = entry2pos(pos1);
+	unsigned int txtPos2 = entry2pos(pos2);
+	unsigned int size1=getFileSize(pos1);
+	unsigned int size2=0;
+	copytxt(txtPos1,txtPos2,size1,size2);
+	FAT[pos2+0x1c] = size2&0xff;
+	FAT[pos2+0x1d] = ((size2>>8)&0xff);
+	FAT[pos2+0x1e] = ((size2>>16)&0xff);
+	FAT[pos2+0x1f] = ((size2>>24)&0xff);
+}
+
+void help(){
+	cout<<"支持的常用指令与简单介绍\n\n";
+	cout<<"注意：需要接路径或文件名的指令均支持多级目录、绝对或相对路径。\n绝路径以A:\\作为开头,多级目录用反斜杠\\连接\n\n";
+	cout<<"tree\t查看全局的目录树\n";
+	cout<<"dir\t列出当前目录的内容，支持根目录和子目录，支持dir+有效路径名\n";
+	cout<<"cd\t进入指定文件夹\n";
+	cout<<"md\t创建文件夹\n";
+	cout<<"rd\t删除非空文件夹\n";
+	cout<<"type\t查看文本文件\n";
+	cout<<"del\t删除文件或整个目录(可非空)\n";
+	cout<<"copy\t复制或合并文件（输出文件必须不存在，需要合并的文件用加号+连接,只支持两个文本文件的合并）\n";
+	cout<<"cls\t清屏\n";
+	cout<<"save\t将本程序对dossys.img的操作进行保存（即覆盖原有dossys.img）";
+	cout<<"exit\t退出程序\n\n";
 }
 
 #endif
