@@ -241,17 +241,19 @@ void dirCluster(unsigned int pos,int &count,long long int &totalSize){
 }
 
 //展示文件内容
-void display(unsigned int pos,unsigned int size){
+unsigned display(unsigned int&pos,unsigned int size,bool dis=true){
 	unsigned int num = pos;
 	while(size--){
-		cout<<FAT[num++];
+		if(dis)cout<<FAT[num++];
+		else num++;
 		if(num==pos+0x200 && size){
 			int cluster = getNextCluster(pos);
-			if(cluster = 0xfff)return;
+			if(cluster = 0xfff)return 0;
 			pos = (cluster+31)*200;
 			num = pos;
 		}
 	}
+	return num;
 } 
 
 //检查当前目录是否为空 

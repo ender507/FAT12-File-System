@@ -326,6 +326,128 @@ void copy(string* cmdParts,unsigned int pos){
 	FAT[pos2+0x1f] = ((size2>>24)&0xff);
 }
 
+void create(string* cmdParts,unsigned int pos){
+	string name = path_file(cmdParts[1]);
+	if(name=="")return;
+	if(nameCheck(name)==false){
+		cout<<"File name invalid!\n";
+		return;
+	} 
+	cd(cmdParts[1],pos,false);
+	if(findFile(pos,true,name)!=0){
+		cout<<"Same named file exist!\n";
+		return;
+	}
+	mk(pos,name,false);
+	pos = findFile(pos,false,name);
+	assert(pos!=1&&pos!=0);
+	unsigned int txtPos = entry2pos(pos);
+	unsigned int size = 0;
+	unsigned int i = txtPos;
+	string tmp;
+	while(getline(cin,tmp)){
+		tmp += '\n';
+		int len = tmp.length();
+		for(int j=0; j<len; j++){
+			FAT[i++] = tmp[j];
+			size++;
+			if(i==txtPos+0x200){
+				if(freeCluster.size()){
+					vector<int>::iterator iter = freeCluster.begin();
+					assignCluster(txtPos/0x200-31,*iter);
+					txtPos = ((*iter)+31)*0x200;
+					int cluster = getNextCluster(((*iter)+31)*0x200);
+					if(cluster == 0xfff)freeCluster.erase(iter); 
+					else{
+						assignCluster((*iter),0xfff);
+						(*iter) = cluster;
+					}
+					i = txtPos;
+				}
+				else{
+					unsigned int freePos = findFreePos();
+					if(freePos==0){
+						cout<<"No space left\n";
+						return;
+					}
+					txtPos = i = freePos;
+					assignCluster(freePos/0x200-31,0xfff);
+				}
+			}
+		}
+	}
+	cin.clear();
+	FAT[pos+0x1c] = size&0xff;
+	FAT[pos+0x1d] = ((size>>8)&0xff);
+	FAT[pos+0x1e] = ((size>>16)&0xff);
+	FAT[pos+0x1f] = ((size>>24)&0xff);
+}
+
+void append(string* cmdParts,unsigned int pos){
+	string name = path_file(cmdParts[1]);
+	if(name=="")return; 
+	cd(cmdParts[1],pos,false);
+	pos = findFile(pos,false,name);
+	if(pos==0){
+		cout<<"File not exist!\n";
+		return;
+	}
+	if(pos==1){
+		cout<<"Not a text file!\n";
+		return;
+	}
+	unsigned int size =  getFileSize(pos);
+	unsigned int txtPos = entry2pos(pos);
+	unsigned int i = display(txtPos,size,false);
+	string tmp;
+	while(getline(cin,tmp)){
+		tmp += '\n';
+		int len = tmp.length();
+		for(int j=0; j<len; j++){
+			FAT[i++] = tmp[j];
+			size++;
+			if(i==txtPos+0x200){
+				if(freeCluster.size()){
+					vector<int>::iterator iter = freeCluster.begin();
+					assignCluster(txtPos/0x200-31,*iter);
+					txtPos = ((*iter)+31)*0x200;
+					int cluster = getNextCluster(((*iter)+31)*0x200);
+					if(cluster == 0xfff)freeCluster.erase(iter); 
+					else{
+						assignCluster((*iter),0xfff);
+						(*iter) = cluster;
+					}
+					i = txtPos;
+				}
+				else{
+					unsigned int freePos = findFreePos();
+					if(freePos==0){
+						cout<<"No space left\n";
+						return;
+					}
+					txtPos = i = freePos;
+					assignCluster(freePos/0x200-31,0xfff);
+				}
+			}
+		}
+	}
+	cin.clear();
+	//改大小 
+	FAT[pos+0x1c] = size&0xff;
+	FAT[pos+0x1d] = ((size>>8)&0xff);
+	FAT[pos+0x1e] = ((size>>16)&0xff);
+	FAT[pos+0x1f] = ((size>>24)&0xff);
+	//改时间 
+	time_t now = time(0);
+	tm *ltm = localtime(&now);
+	unsigned int input_time= ((ltm->tm_hour&0x1f)<<11)+((ltm->tm_min&0x3f)<<5);
+	FAT[pos+22] = input_time & 0xff;
+	FAT[pos+23] = (input_time >> 8) &0xff;
+	unsigned int input_date = (((ltm->tm_year-80)&0x7f)<<9) + (((ltm->tm_mon+1)&0xf)<<5) + (ltm->tm_mday&0x1f);
+	FAT[pos+24] = input_date & 0xff;
+	FAT[pos+25] = (input_date >> 8) &0xff;
+}
+
 void help(){
 	cout<<"支持的常用指令与简单介绍\n\n";
 	cout<<"注意：需要接路径或文件名的指令均支持多级目录、绝对或相对路径。\n绝路径以A:\\作为开头,多级目录用反斜杠\\连接\n\n";
@@ -337,6 +459,8 @@ void help(){
 	cout<<"type\t查看文本文件\n";
 	cout<<"del\t删除文件或整个目录(可非空)\n";
 	cout<<"copy\t复制或合并文件（输出文件必须不存在，需要合并的文件用加号+连接,只支持两个文本文件的合并）\n";
+	cout<<"create\t创建并写入文本文件\n";
+	cout<<"append\t在文本文件末尾追加新内容\n";
 	cout<<"cls\t清屏\n";
 	cout<<"save\t将本程序对dossys.img的操作进行保存（即覆盖原有dossys.img）";
 	cout<<"exit\t退出程序\n\n";

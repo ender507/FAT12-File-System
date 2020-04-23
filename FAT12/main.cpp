@@ -70,7 +70,7 @@ int main(){
 		getline(cin,cmd);
 		int len = cmd.length();
 		for(int i=0; i!=len; i++)if(cmd[i]>='a'&&cmd[i]<='z')cmd[i]=cmd[i]-'a'+'A';//指令全部转大写
-		string cmdParts[3];
+		string cmdParts[5];
 		cmdDecode(cmdParts,cmd);
 		if(cmdParts[0]=="")continue;
 		//原有指令 
@@ -82,6 +82,8 @@ int main(){
 		else if(cmdParts[0]=="DEL")del(cmdParts,pos);
 		else if(cmdParts[0]=="CLS")system("cls");
 		else if(cmdParts[0]=="COPY")copy(cmdParts,pos);
+		else if(cmdParts[0]=="CREATE")create(cmdParts,pos);
+		else if(cmdParts[0]=="APPEND")append(cmdParts,pos); 
 		//原创指令 
 		else if(cmdParts[0]=="HELP")help();
 		else if(cmdParts[0]=="TREE"){
